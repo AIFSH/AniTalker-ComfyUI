@@ -1,0 +1,11 @@
+pytorch-lightning
+torchmetrics
+scipy
+numpy
+tqdm
+espnet
+moviepy
+python_speech_features
+transformers
+torchlm
+gfpgan
