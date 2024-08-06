@@ -31,7 +31,7 @@ from moviepy.editor import *
 import shutil
 from tqdm import tqdm
 
-def img_preprocessing(img,img_size):
+def img_preprocessing(img,img_size,base_pad):
     # detect face
     torchlm.runtime.bind(faceboxesv2(device=device))
     torchlm.runtime.bind(
@@ -53,6 +53,12 @@ def img_preprocessing(img,img_size):
     x1, y1, x2, y2 = bbox[:4]
     src_width = img.size[1]
     src_height = img.size[0]
+
+    base_pad = base_pad
+    x1 = max(0, x1 - base_pad)
+    x2 = min(src_width, x2 + base_pad)
+    y1 = max(0, y1 - base_pad)
+    y2 = min(src_height, y2 + base_pad)
 
     width = x2 - x1
     height = y2 - y1
@@ -132,6 +138,9 @@ class AniTalkerNode:
                 "infer_type":(["mfcc_full_control","mfcc_pose_only",
                                "hubert_pose_only","hubert_audio_only",
                                "hubert_full_control"],),
+                "base_pad":("INT",{
+                    "default": 150
+                }),
                 "pose_yaw":("FLOAT",{
                     "default":0.25,
                 }),
@@ -154,7 +163,7 @@ class AniTalkerNode:
                     "default": False
                 }),
                 "step_T":("INT",{
-                    "default": 42
+                    "default": 50
                 }),
                 "seed":("INT",{
                     "default": 42
@@ -177,7 +186,7 @@ class AniTalkerNode:
         image = Image.fromarray(image_np)
         return image
 
-    def generate(self,image,audio,infer_type,pose_yaw,pose_pitch,
+    def generate(self,image,audio,infer_type,base_pad,pose_yaw,pose_pitch,
                  pose_roll,face_location,face_scale,face_sr,control_flag,step_T,seed):
         frames_result_saved_path = os.path.join(output_dir, "anitalker",'frames')
         os.makedirs(frames_result_saved_path, exist_ok=True)
@@ -226,7 +235,7 @@ class AniTalkerNode:
             print('Type NOT Found!')
             exit(0)
         
-        img_source = img_preprocessing(self.comfyimage2Image(image), 256).to(device)
+        img_source = img_preprocessing(self.comfyimage2Image(image), 256,base_pad).to(device)
         one_shot_lia_start, one_shot_lia_direction, feats = self.lia.get_start_direction_code(img_source, img_source, img_source, img_source)
         
         #======Loading Stage 2 model=========
@@ -248,6 +257,7 @@ class AniTalkerNode:
         speech = waveform.mean(dim=0,keepdim=True)
         if source_sr != prompt_sr:
             speech = torchaudio.transforms.Resample(orig_freq=source_sr, new_freq=prompt_sr)(speech)
+        # speech = speech.squeeze(0)
         if conf.infer_type.startswith('mfcc'):
             # MFCC features
             input_values = python_speech_features.mfcc(signal=speech, samplerate=prompt_sr, numcep=13, winlen=0.025, winstep=0.01)
